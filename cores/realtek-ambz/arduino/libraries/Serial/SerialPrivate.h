@@ -2,18 +2,11 @@
 
 #pragma once
 
-#include <Arduino.h>
-#include <sdk_private.h>
+#include <ArduinoPrivate.h>
+#include <Serial.h>
 
-typedef struct {
-	UART_TypeDef *uart;
+struct SerialData {
+	SerialRingBuffer *buf{nullptr};
+	UART_TypeDef *uart{nullptr};
 	IRQn irq;
-	RingBuffer buf;
-} SerialData;
-
-#define DATA   ((SerialData *)data)
-#define pDATA  ((SerialData *)param)
-#define BUF	   (DATA->buf)
-#define pdBUF  (pDATA->buf)
-#define UART   (DATA->uart)
-#define pdUART (pDATA->uart)
+};

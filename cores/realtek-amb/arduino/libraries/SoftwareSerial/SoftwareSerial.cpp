@@ -2,8 +2,8 @@
 
 #if LT_RTL8710B
 
+#include <ArduinoPrivate.h>
 #include <SoftwareSerial.h>
-#include <sdk_private.h>
 
 #define TIMER_MAX 3
 #define OBJ		  ((gtimer_t *)this->param)
@@ -63,8 +63,8 @@ void SoftwareSerial::begin(unsigned long baudrate, uint16_t config) {
 	pinMode(data.tx.pin, OUTPUT);
 	digitalWrite(data.tx.pin, HIGH);
 
-	data.rx.buf	  = new RingBuffer();
-	data.tx.buf	  = new RingBuffer();
+	data.rx.buf	  = new SerialRingBuffer();
+	data.tx.buf	  = new SerialRingBuffer();
 	data.rx.state = SS_IDLE;
 	data.tx.state = SS_IDLE;
 

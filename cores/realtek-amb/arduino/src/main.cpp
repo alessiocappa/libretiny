@@ -1,7 +1,6 @@
 /* Copyright (c) Kuba Szczodrzyński 2022-06-19. */
 
-#include <Arduino.h>
-#include <sdk_private.h>
+#include <ArduinoPrivate.h>
 
 extern "C" {
 
@@ -15,7 +14,7 @@ void lt_init_arduino() {
 #endif
 
 bool startMainTask() {
-	osThreadDef(mainTask, osPriorityRealtime, 1, 4096 * 4);
+	osThreadDef(mainTask, osPriorityRealtime, 1, 8192);
 	main_tid = osThreadCreate(osThread(mainTask), NULL);
 	osKernelStart();
 	return true;

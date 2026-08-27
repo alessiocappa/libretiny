@@ -5,18 +5,25 @@
 #include <libretiny.h>
 
 // https://stackoverflow.com/a/3437484
-#define MAX(a, b)                                                                                                      \
-	({                                                                                                                 \
-		__typeof__(a) _a = (a);                                                                                        \
-		__typeof__(b) _b = (b);                                                                                        \
-		_a > _b ? _a : _b;                                                                                             \
+#define MAX(a, b)               \
+	({                          \
+		__typeof__(a) _a = (a); \
+		__typeof__(b) _b = (b); \
+		_a > _b ? _a : _b;      \
 	})
-#define MIN(a, b)                                                                                                      \
-	({                                                                                                                 \
-		__typeof__(a) _a = (a);                                                                                        \
-		__typeof__(b) _b = (b);                                                                                        \
-		_a < _b ? _a : _b;                                                                                             \
+#define MIN(a, b)               \
+	({                          \
+		__typeof__(a) _a = (a); \
+		__typeof__(b) _b = (b); \
+		_a < _b ? _a : _b;      \
 	})
+
+#define LT_MEM32(addr) (*((volatile uint32_t *)(addr)))
+
+// from https://scaryreasoner.wordpress.com/2009/02/28/checking-sizeof-at-compile-time/
+// (include/linux/kernel.h)
+#define LT_BUILD_BUG_ON(condition) ((void)sizeof(char[1 - 2 * !!(condition)]))
+#define LT_BUILD_CHECK(condition)  ((void)sizeof(char[1 - 2 * !(condition)]))
 
 /**
  * @brief Generate random bytes using rand().

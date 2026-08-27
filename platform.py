@@ -130,6 +130,10 @@ class LibretinyPlatform(PlatformBase):
         # get user-chosen versions of libraries/toolchains
         versions: RecursiveDict = self.custom("versions") or {}
 
+        # override BDK version for BK7238
+        if board.get("build.family") == "BK7238" and not versions.get("beken-bdk"):
+            versions["beken-bdk"] = "3.0.78"
+
         # set specific compiler versions
         if "toolchains" in package_obj:
             toolchains = package_obj["toolchains"]
@@ -143,7 +147,7 @@ class LibretinyPlatform(PlatformBase):
                 raise RuntimeError(
                     f"Toolchain not found for the current platform: {specifiers}"
                 )
-            (toolchain, version) = toolchain_version.split("@")
+            toolchain, version = toolchain_version.split("@")
             self.packages[f"toolchain-{toolchain}"]["version"] = version
 
         # gather library dependencies

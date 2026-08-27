@@ -1,9 +1,15 @@
 /* Copyright (c) Kuba Szczodrzyński 2022-06-27. */
 
 #include "WiFiPrivate.h"
+#include <libretiny.h>
 
-WiFiStatus
-WiFiClass::begin(const char *ssid, const char *passphrase, int32_t channel, const uint8_t *bssid, bool connect) {
+WiFiStatus WiFiClass::begin(
+	const char *ssid,
+	const char *passphrase,
+	int32_t channel,
+	const uint8_t *bssid,
+	bool connect
+) {
 	if (!enableSTA(true))
 		return WL_CONNECT_FAILED;
 	if (!validate(ssid, passphrase))
@@ -24,8 +30,14 @@ WiFiClass::begin(const char *ssid, const char *passphrase, int32_t channel, cons
 	STA_ADV_CFG.ap_info.channel		= channel;
 	STA_ADV_CFG.wifi_retry_interval = 100;
 
-	if (reconnect(bssid))
+	// Feed watchdog before potentially long-blocking reconnect
+	lt_wdt_feed();
+
+	if (reconnect(bssid)) {
+		// Feed watchdog after reconnect
+		lt_wdt_feed();
 		return WL_CONNECTED;
+	}
 
 	return WL_CONNECT_FAILED;
 }
@@ -228,3 +240,41 @@ WiFiAuthMode WiFiClass::getEncryption() {
 	STA_GET_LINK_STATUS_RETURN(WIFI_AUTH_INVALID);
 	return securityTypeToAuthMode(LINK_STATUS.security);
 }
+#ifdef CONFIG_IPV6
+bool WiFiClass::enableIpV6() {
+	return true;
+}
+
+IPv6Address WiFiClass::localIPv6() {
+	struct netif *ifs = (struct netif *)net_get_sta_handle();
+	std::vector<IPv6Address> result;
+	struct wlan_ip_config addr;
+	int nr_addresses = 0;
+
+	if (sta_ip_is_start())
+		nr_addresses = net_get_if_ipv6_pref_addr(&addr, ifs);
+
+	for (int i = 0; i < nr_addresses; i++) {
+		if (ip6_addr_islinklocal(&addr.ipv6[i]))
+			return IPv6Address(addr.ipv6[i].addr);
+	}
+
+	return IPv6Address();
+}
+
+std::vector<IPv6Address> WiFiClass::allLocalIPv6() {
+	struct netif *ifs = (struct netif *)net_get_sta_handle();
+	std::vector<IPv6Address> result;
+	struct wlan_ip_config addr;
+	int nr_addresses = 0;
+
+	if (sta_ip_is_start())
+		nr_addresses = net_get_if_ipv6_pref_addr(&addr, ifs);
+
+	for (int i = 0; i < nr_addresses; i++) {
+		result.push_back(IPv6Address(addr.ipv6[i].addr));
+	}
+
+	return result;
+}
+#endif

@@ -1,9 +1,15 @@
 /* Copyright (c) Kuba Szczodrzyński 2022-04-25. */
 
 #include "WiFiPrivate.h"
+#include <libretiny.h>
 
-WiFiStatus
-WiFiClass::begin(const char *ssid, const char *passphrase, int32_t channel, const uint8_t *bssid, bool connect) {
+WiFiStatus WiFiClass::begin(
+	const char *ssid,
+	const char *passphrase,
+	int32_t channel,
+	const uint8_t *bssid,
+	bool connect
+) {
 	if (!enableSTA(true))
 		return WL_CONNECT_FAILED;
 	if (!validate(ssid, passphrase))
@@ -61,15 +67,26 @@ bool WiFiClass::config(IPAddress localIP, IPAddress gateway, IPAddress subnet, I
 	return true;
 }
 
+// Enable or disable partial scan for a specific channel
+static void set_pscan_channel(uint8_t channel, bool enable) {
+	uint8_t channel_list[1] = {channel};
+	uint8_t pscan_config[1] = {enable ? (PSCAN_ENABLE | PSCAN_FAST_SURVEY) : 0};
+	wifi_set_pscan_chan(channel_list, pscan_config, 1);
+}
+
 bool WiFiClass::reconnect(const uint8_t *bssid) {
 	int ret;
 	uint8_t dhcpRet;
 	WiFiNetworkInfo &info = DATA->sta;
+	EventInfo *eventInfo  = nullptr;
 
 	LT_IM(WIFI, "Connecting to %s (bssid=%p)", info.ssid, bssid);
 	DIAG_PRINTF_DISABLE();
 
 	wext_set_ssid(WLAN0_NAME, (uint8_t *)"-", 1);
+
+	// Feed watchdog before potentially long-blocking connect
+	lt_wdt_feed();
 
 	if (!bssid) {
 		ret = wifi_connect(
@@ -87,6 +104,10 @@ bool WiFiClass::reconnect(const uint8_t *bssid) {
 			info.bssid = (uint8_t *)malloc(ETH_ALEN);
 			memcpy(info.bssid, bssid, ETH_ALEN);
 		}
+		// If we have both BSSID and channel, use partial scan for faster connection
+		if (info.channel > 0) {
+			set_pscan_channel(info.channel, true);
+		}
 		ret = wifi_connect_bssid(
 			(unsigned char *)bssid,
 			info.ssid,
@@ -98,31 +119,47 @@ bool WiFiClass::reconnect(const uint8_t *bssid) {
 			-1,
 			NULL
 		);
+		// Reset partial scan config
+		if (info.channel > 0) {
+			set_pscan_channel(info.channel, false);
+		}
 	}
 
-	if (ret == RTW_SUCCESS) {
-		dhcpRet = LwIP_DHCP(0, DHCP_START);
-		if (dhcpRet == DHCP_ADDRESS_ASSIGNED) {
-			LT_HEAP_I();
-			EventInfo *eventInfo				   = (EventInfo *)calloc(1, sizeof(EventInfo));
-			eventInfo->got_ip.if_index			   = 0;
-			eventInfo->got_ip.esp_netif			   = NULL;
-			eventInfo->got_ip.ip_info.ip.addr	   = localIP();
-			eventInfo->got_ip.ip_info.gw.addr	   = gatewayIP();
-			eventInfo->got_ip.ip_info.netmask.addr = subnetMask();
-			eventInfo->got_ip.ip_changed		   = true;
-			// pass the event through the queue
-			wifi_indication(WIFI_EVENT_CONNECT, (char *)eventInfo, ARDUINO_EVENT_WIFI_STA_GOT_IP, -2);
-			// free memory as wifi_indication creates a copy
-			free(eventInfo);
-			DIAG_PRINTF_ENABLE();
-			return true;
-		}
-		LT_EM(WIFI, "DHCP failed; dhcpRet=%d", dhcpRet);
-		wifi_disconnect();
+	// Feed watchdog after connect, before DHCP
+	lt_wdt_feed();
+
+	if (ret != RTW_SUCCESS) {
+		LT_EM(WIFI, "Connection failed; ret=%d", ret);
 		goto error;
 	}
-	LT_EM(WIFI, "Connection failed; ret=%d", ret);
+
+	// Run DHCP only if not using static IP configuration
+	if (!DATA->sta.localIP) {
+		dhcpRet = LwIP_DHCP(0, DHCP_START);
+		// Feed watchdog after DHCP
+		lt_wdt_feed();
+		if (dhcpRet != DHCP_ADDRESS_ASSIGNED) {
+			LT_EM(WIFI, "DHCP failed; dhcpRet=%d", dhcpRet);
+			wifi_disconnect();
+			goto error;
+		}
+	}
+
+	LT_HEAP_I();
+	eventInfo							   = (EventInfo *)calloc(1, sizeof(EventInfo));
+	eventInfo->got_ip.if_index			   = 0;
+	eventInfo->got_ip.esp_netif			   = NULL;
+	eventInfo->got_ip.ip_info.ip.addr	   = localIP();
+	eventInfo->got_ip.ip_info.gw.addr	   = gatewayIP();
+	eventInfo->got_ip.ip_info.netmask.addr = subnetMask();
+	eventInfo->got_ip.ip_changed		   = true;
+	// pass the event through the queue
+	wifi_indication(WIFI_EVENT_CONNECT, (char *)eventInfo, ARDUINO_EVENT_WIFI_STA_GOT_IP, -2);
+	// free memory as wifi_indication creates a copy
+	free(eventInfo);
+
+	DIAG_PRINTF_ENABLE();
+	return true;
 error:
 	DIAG_PRINTF_ENABLE();
 	return false;
